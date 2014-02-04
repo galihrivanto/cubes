@@ -140,10 +140,10 @@ class Calendar(object):
             self.first_weekday = int(first_weekday)
 
         if timezone:
-            self.timezone_name = timezone
+            self.timezone = pytz.timezone(timezone)
         else:
-            self.timezone_name = local_timezone_name()
-        self.timezone = pytz.timezone(self.timezone_name)
+            import tzlocal
+            self.timezone = tzlocal.get_localzone()
 
     def now(self):
         """Returns current date in the calendar's timezone."""

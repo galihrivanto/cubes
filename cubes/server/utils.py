@@ -2,21 +2,20 @@
 import pytz
 
 from flask import Request, Response, g
-from time import gmtime, strftime
 from datetime import datetime
 
 import ConfigParser
 import cStringIO
-import datetime
 import decimal
 import codecs
 import json
 import csv
+import tzlocal
 
 from .errors import *
 
 tz_utc = pytz.timezone('UTC')
-default_tz = pytz.timezone(strftime("%Z", gmtime()))
+default_tz = tzlocal.get_localzone()
 
 
 def set_default_tz(tz):
