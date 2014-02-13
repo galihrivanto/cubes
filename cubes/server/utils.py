@@ -1,7 +1,8 @@
 # -*- coding=utf -*-
 import pytz
 
-from flask import Request, Response, g
+from flask import Request, Response, request, g
+from time import gmtime, strftime
 from datetime import datetime
 
 import ConfigParser

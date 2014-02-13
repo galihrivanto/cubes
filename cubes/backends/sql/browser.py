@@ -1,6 +1,8 @@
 # -*- coding=utf -*-
 # Actually, this is a furry snowflake, not a nice star
 
+from __future__ import absolute_import
+
 from ...browser import *
 from ...logging import get_logger
 from ...statutils import calculators_for_aggregates, available_calculators
@@ -23,6 +25,31 @@ except ImportError:
 __all__ = [
     "SnowflakeBrowser",
 ]
+
+#### DEBUG ### DEBUG ### DEBUG ### DEBUG ### DEBUG ### DEBUG ### DEBUG ###  
+
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+import time
+import logging
+
+
+@event.listens_for(Engine, "before_cursor_execute")
+def before_cursor_execute(conn, cursor, statement,
+                        parameters, context, executemany):
+    context._query_start_time = time.time()
+    logger = get_logger()
+    logger.debug(">>> Start Query: %s" % statement)
+
+@event.listens_for(Engine, "after_cursor_execute")
+def after_cursor_execute(conn, cursor, statement,
+                        parameters, context, executemany):
+    total = time.time() - context._query_start_time
+    logger = get_logger()
+    logger.debug("--- Query Complete!")
+    logger.debug("<<< Total Time: %f" % total)
+
+#### DEBUG ### DEBUG ### DEBUG ### DEBUG ### DEBUG ### DEBUG ### DEBUG ###  
 
 
 class SnowflakeBrowser(AggregationBrowser):
@@ -91,6 +118,10 @@ class SnowflakeBrowser(AggregationBrowser):
         self.connectable = store.connectable
         self.metadata = store.metadata or sqlalchemy.MetaData(bind=self.connectable)
 
+        print "\n--------------- BROWSER ---------------\n"
+        print "CONNECTABLE: %s" % self.connectable
+        print "POOL:        %s" % self.connectable.pool
+        print "\n---------------------------------------\n"
         # Options
         # -------
 
@@ -200,29 +231,18 @@ class SnowflakeBrowser(AggregationBrowser):
 
         return ResultIterator(cursor, builder.labels)
 
-    def members(self, cell, dimension, depth=None, hierarchy=None, page=None,
-                page_size=None, order=None):
+    def provide_members(self, cell, dimension, depth=None, hierarchy=None,
+                        levels=None, attributes=None, page=None,
+                        page_size=None, order=None):
         """Return values for `dimension` with level depth `depth`. If `depth`
         is ``None``, all levels are returned.
 
         Number of database queries: 1.
         """
-        cell = cell or Cell(self.cube)
-        order = self.prepare_order(order, is_aggregate=False)
-
-        dimension = self.cube.dimension(dimension)
-        hierarchy = dimension.hierarchy(hierarchy)
-
-        if depth == 0:
-            raise ArgumentError("Depth for dimension members should not be 0")
-        elif depth is None:
-            levels = hierarchy.levels
-        else:
-            levels = hierarchy.levels[0:depth]
-
-        attributes = []
-        for level in levels:
-            attributes += level.attributes
+        if not attributes:
+            attributes = []
+            for level in levels:
+                attributes += level.attributes
 
         builder = QueryBuilder(self)
         builder.members_statement(cell, attributes)
@@ -415,8 +435,7 @@ class SnowflakeBrowser(AggregationBrowser):
             afuncs = available_aggregate_functions()
             aggregates = [agg for agg in aggregates if not agg.function or agg.function in afuncs]
             names = [str(agg) for agg in aggregates]
-            cond = lambda cell: not any(cell[agg] is None for agg in names)
-            result.cells = itertools.ifilter(cond, result.cells)
+            result.exclude_if_null = names
 
         return result
 
@@ -507,7 +526,7 @@ class SnowflakeBrowser(AggregationBrowser):
             except sqlalchemy.exc.NoSuchTableError:
                 issues.append(("join", "table %s.%s does not exist" % table, join))
 
-        # Check attributes
+        # check attributes
 
         attributes = self.mapper.all_attributes()
         physical = self.mapper.map_attributes(attributes)
@@ -536,16 +555,20 @@ class ResultIterator(object):
         self.result = result
         self.batch = None
         self.labels = labels
+        self.exclude_if_null = None
 
     def __iter__(self):
-        return self
+        while True:
+            if not self.batch:
+                many = self.result.fetchmany()
+                if not many:
+                    break
+                self.batch = collections.deque(many)
 
-    def next(self):
-        if not self.batch:
-            many = self.result.fetchmany()
-            if not many:
-                raise StopIteration
-            self.batch = collections.deque(many)
+            row = self.batch.popleft()
 
-        row = self.batch.popleft()
-        return dict(zip(self.labels, row))
+            if self.exclude_if_null \
+                    and any(cell[agg] is None for agg in self.exclude_if_nul):
+                continue
+
+            yield dict(zip(self.labels, row))

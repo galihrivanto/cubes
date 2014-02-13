@@ -1,6 +1,6 @@
 # -*- coding=utf -*-
 import sys
-from .providers import read_model_metadata
+from .metadata import read_model_metadata
 from .auth import NotAuthorized
 from .model import Model
 from .common import read_json_file
@@ -300,7 +300,7 @@ class Workspace(object):
 
         self.info = OrderedDict()
 
-        if config.has_option("workspace", "info"):
+        if config.has_option("workspace", "info_file"):
             path = config.get("workspace", "info_file")
             info = read_json_file(path, "Slicer info")
             for key in SLICER_INFO_KEYS:
@@ -676,14 +676,19 @@ class Workspace(object):
         # Add the default namespace as the last look-up place, if not present
         providers.append(self.namespace)
 
-        for dim_name in cube.linked_dimensions:
+        dimensions = {}
+        for link in cube.dimension_links:
+            dim_name = link["name"]
             try:
-                dim = self.dimension(dim_name, locale=cube.locale,
+                dim = self.dimension(dim_name,
+                                     locale=cube.locale,
                                      providers=providers)
             except TemplateRequired as e:
                 raise ModelError("Dimension template '%s' missing" % dim_name)
 
-            cube.add_dimension(dim)
+            dimensions[dim_name] = dim
+
+        cube.link_dimensions(dimensions)
 
     def _lookup_dimension(self, name, providers, templates):
         """Look-up a dimension `name` in chain of `providers` which might

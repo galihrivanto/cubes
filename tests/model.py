@@ -18,7 +18,7 @@ DIM_DATE_DESC = {
     ],
     "hierarchies": [
         {"name": "ymd", "levels": ["year", "month", "day"]},
-        {"name": "ymd", "levels": ["year", "month"]},
+        {"name": "ym", "levels": ["year", "month"]},
     ]
 }
 
@@ -483,8 +483,9 @@ class HierarchyTestCase(unittest.TestCase):
         ]
         self.level_names = [level.name for level in self.levels]
         self.dimension = cubes.Dimension("date", levels=self.levels)
+        levels = [self.levels[0], self.levels[1], self.levels[2]]
         self.hierarchy = cubes.Hierarchy("default",
-                                         ["year", "month", "day"],
+                                         levels,
                                          self.dimension)
 
     def test_initialization(self):
@@ -492,12 +493,11 @@ class HierarchyTestCase(unittest.TestCase):
         with self.assertRaises(ModelError):
             cubes.Hierarchy("default", [], self.dimension)
 
-        hier = cubes.Hierarchy("default", [])
+        with self.assertRaisesRegexp(ModelInconsistencyError, "not be empty"):
+            cubes.Hierarchy("default", [])
 
-        try:
-            hier.levels
-        except ModelInconsistencyError:
-            pass
+        with self.assertRaisesRegexp(ModelInconsistencyError, "as strings"):
+            cubes.Hierarchy("default", ["iamastring"])
 
     def test_operators(self):
         """Hierarchy operators len(), hier[] and level in hier"""
@@ -573,6 +573,26 @@ class HierarchyTestCase(unittest.TestCase):
         self.assertEqual(["year", "month", "month_name", "month_sname", "day"],
                          attrs)
 
+    def test_copy(self):
+        class DummyDimension(object):
+            def __init__(self):
+                self.name = "dummy"
+                self.is_flat = False
+
+        left = self.hierarchy.levels[0].attributes[0]
+        left.dimension = DummyDimension()
+
+        clone = copy.deepcopy(self.hierarchy)
+
+        left = self.hierarchy.levels[0].attributes[0]
+        right = clone.levels[0].attributes[0]
+        # Make sure that the dimension is not copied
+        self.assertIsNotNone(right.dimension)
+        self.assertIs(left.dimension, right.dimension)
+
+        self.assertEqual(self.hierarchy.levels, clone.levels)
+        self.assertEqual(self.hierarchy, clone)
+
 
 class DimensionTestCase(unittest.TestCase):
     def setUp(self):
@@ -585,8 +605,9 @@ class DimensionTestCase(unittest.TestCase):
         ]
         self.level_names = [level.name for level in self.levels]
         self.dimension = cubes.Dimension("date", levels=self.levels)
-        self.hierarchy = cubes.Hierarchy("default", ["year", "month", "day"],
-                                         self.dimension)
+
+        levels = [self.levels[0], self.levels[1], self.levels[2]]
+        self.hierarchy = cubes.Hierarchy("default", levels)
 
     def test_create(self):
         """Dimension from a dictionary"""
@@ -696,10 +717,25 @@ class CubeTestCase(unittest.TestCase):
     def setUp(self):
         a = [DIM_DATE_DESC, DIM_PRODUCT_DESC, DIM_FLAG_DESC]
         self.measures = cubes.attribute_list(["amount", "discount"], Measure)
+        self.details = cubes.attribute_list(["detail"], Attribute)
         self.dimensions = [cubes.create_dimension(desc) for desc in a]
         self.cube = cubes.Cube("contracts",
                                 dimensions=self.dimensions,
-                                measures=self.measures)
+                                measures=self.measures,
+                                details=self.details)
+
+    def test_create_cube(self):
+        cube = {
+                "name": "cube",
+                "dimensions": ["date"],
+                "aggregates": ["record_count"],
+                "details": ["some_detail", "another_detail"]
+        }
+        cube = create_cube(cube)
+
+        self.assertEqual(cube.name, "cube")
+        self.assertEqual(len(cube.aggregates), 1)
+        self.assertEqual(len(cube.details), 2)
 
     def test_get_dimension(self):
         self.assertListEqual(self.dimensions, self.cube.dimensions)
@@ -718,6 +754,7 @@ class CubeTestCase(unittest.TestCase):
 
     def test_attributes(self):
         all_attributes = self.cube.all_attributes
+
         refs = [a.ref() for a in all_attributes]
         expected = [
             'date.year',
@@ -728,6 +765,7 @@ class CubeTestCase(unittest.TestCase):
             'product.name',
             'product.description',
             'flag',
+            'detail',
             'amount',
             'discount']
         self.assertSequenceEqual(expected, refs)
@@ -753,6 +791,73 @@ class CubeTestCase(unittest.TestCase):
         self.assertEqual(self.cube.measures, cube.measures)
         self.assertEqual(self.cube, cube)
 
+    def test_links(self):
+        dims = dict((d.name, d) for d in self.dimensions)
+
+        links = [{"name": "date"}]
+        cube = cubes.Cube("contracts",
+                          dimension_links=links,
+                          measures=self.measures)
+        cube.link_dimensions(dims)
+        self.assertEqual(len(cube.dimensions), 1)
+        dim = cube.dimension("date")
+        self.assertEqual(len(dim.hierarchies), 2)
+
+        links = [{"name": "date"}, "product", "flag"]
+        cube = cubes.Cube("contracts",
+                          dimension_links=links,
+                          measures=self.measures)
+        cube.link_dimensions(dims)
+        self.assertEqual(len(cube.dimensions), 3)
+        self.assertIsInstance(cube.dimension("flag"), Dimension)
+
+    def test_link_hierarchies(self):
+        dims = dict((d.name, d) for d in self.dimensions)
+
+        links = [{"name": "date"}]
+        cube = cubes.Cube("contracts",
+                          dimension_links=links,
+                          measures=self.measures)
+        cube.link_dimensions(dims)
+        dim = cube.dimension("date")
+        self.assertEqual(len(dim.hierarchies), 2)
+        self.assertEqual(dim.hierarchy().name, "ymd")
+
+        links = [{"name": "date", "nonadditive":None}]
+        cube = cubes.Cube("contracts",
+                          dimension_links=links,
+                          measures=self.measures)
+        cube.link_dimensions(dims)
+        dim = cube.dimension("date")
+        self.assertEqual(len(dim.hierarchies), 2)
+        self.assertEqual(dim.hierarchy().name, "ymd")
+
+        links = [{"name": "date", "hierarchies": ["ym"]}]
+        cube = cubes.Cube("contracts",
+                          dimension_links=links,
+                          measures=self.measures)
+        cube.link_dimensions(dims)
+        dim = cube.dimension("date")
+        self.assertEqual(len(dim.hierarchies), 1)
+        self.assertEqual(dim.hierarchy().name, "ym")
+
+    def test_inherit_nonadditive(self):
+        dims = [DIM_DATE_DESC, DIM_PRODUCT_DESC, DIM_FLAG_DESC]
+
+        cube = {
+            "name": "contracts",
+            "dimensions": ["date", "product"],
+            "nonadditive": "time",
+            "measures": ["amount", "discount"]
+        }
+
+        dims = [cubes.create_dimension(md) for md in dims]
+        dims = dict((dim.name, dim) for dim in dims)
+
+        cube = cubes.create_cube(cube)
+
+        measures = cube.measures
+        self.assertEqual(measures[0].nonadditive, "time")
 
 class OldModelValidatorTestCase(unittest.TestCase):
     def setUp(self):

@@ -1132,17 +1132,10 @@ class QueryBuilder(object):
         if not items:
             return self.semiadditive_attribute
 
+        # FIXME: this looks broken
         item = items[0]
 
-        # FIXME: the 'dow' is hard-wired
-
-        if len(item.hierarchy.levels) > len(item.levels):
-            return self.semiadditive_attribute
-        elif len(item.hierarchy.levels) == len(item.levels):
-            if len(item.levels) == 1 and item.levels[0].name == 'dow':
-                return self.semiadditive_attribute
-            else:
-                return None
+        return self.semiadditive_attribute
 
     def _semiadditive_subquery(self, semiadditive_attribute, selection,
                                from_obj, condition, group_by):

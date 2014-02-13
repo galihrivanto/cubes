@@ -55,6 +55,8 @@ Workspace
   recursively in namespaces; ``exact`` – cube has to have globally unique
   reference 
 
+* ``info_file`` – path to JSON file containing additional server info
+
 Models
 ======
 
@@ -95,6 +97,8 @@ Server
     ``true`` for demonstration purposes.
 * ``host`` - host where the server runs, defaults to ``localhost``
 * ``port`` - port on which the server listens, defaults to ``5000``
+* ``allow_cors_origin`` – Cross-origin resource sharing header. Other related
+  headers are added as well, if this option is present.
 
 * ``authentication`` – authentication method (see below for more information)
 
