@@ -562,7 +562,7 @@ class Workspace(object):
             if isinstance(namespace, basestring):
                 (ns, _) = self.namespace.namespace(namespace, create=True)
             else:
-                ns = namepsace
+                ns = namespace
         elif store != "default":
             # Store in store's namespace
             # TODO: use default namespace

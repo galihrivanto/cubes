@@ -37,7 +37,7 @@ class Mapper(object):
 
         super(Mapper, self).__init__()
 
-        if cube == None:
+        if cube is None:
             raise Exception("Cube for mapper should not be None.")
 
         self.logger = get_logger()
