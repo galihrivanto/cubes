@@ -687,6 +687,7 @@ class DimensionTestCase(unittest.TestCase):
     def test_template(self):
         dims = {"date": self.dimension}
         desc = {"template": "date", "name": "date"}
+
         dim = cubes.create_dimension(desc, dims)
         self.assertEqual(self.dimension, dim)
         hier = dim.hierarchy()
@@ -712,6 +713,35 @@ class DimensionTestCase(unittest.TestCase):
         self.assertEqual(2, len(dim.hierarchies))
         self.assertEqual(["ym", "ymd"],
                          [hier.name for hier in dim.hierarchies.values()])
+
+    def test_template_hierarchies(self):
+        md = {
+            "name": "time",
+            "levels": ["year", "month", "day", "hour"],
+            "hierarchies": [
+                {"name": "full", "levels": ["year", "month", "day", "hour"]},
+                {"name": "ymd", "levels": ["year", "month", "day"]},
+                {"name": "ym", "levels": ["year", "month"]},
+                {"name": "y", "levels": ["year"]},
+            ]
+        }
+        dim_time = cubes.create_dimension(md)
+        templates = {"time": dim_time}
+        md = {
+            "name": "date",
+            "template": "time",
+            "hierarchies": [
+                "ymd", "ym", "y"
+            ]
+        }
+
+        dim_date = cubes.create_dimension(md, templates)
+
+        self.assertEqual(dim_date.name, "date")
+        self.assertEqual(len(dim_date.hierarchies), 3)
+        names = [h.name for h in dim_date.hierarchies.values()]
+        self.assertEqual(["ymd", "ym", "y"], names)
+
 
 class CubeTestCase(unittest.TestCase):
     def setUp(self):
@@ -962,6 +992,23 @@ class ReadModelDescriptionTestCase(ModelTestCaseBase):
         with self.assertRaises(ArgumentError):
             path = self.model_path("model.json")
             desc = cubes.read_model_metadata_bundle(path)
+
+class BaseModelTestCase(ModelTestCaseBase):
+    def test_base_ignorance(self):
+        ws = cubes.Workspace(load_base_model=False)
+        with self.assertRaises(NoSuchDimensionError):
+            ws.dimension("base_time")
+
+    def test_base_existence(self):
+        ws = cubes.Workspace()
+        dim = ws.dimension("base_time")
+        self.assertEqual(dim.name, "base_time")
+
+    def test_select_hierarchies(self):
+        ws = cubes.Workspace()
+        dim_time = ws.dimension("base_time")
+        dim_date = ws.dimension("base_date")
+        self.assertLess(len(dim_date.hierarchies), len(dim_time.hierarchies))
 
 def test_suite():
     suite = unittest.TestSuite()
