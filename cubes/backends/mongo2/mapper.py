@@ -183,7 +183,11 @@ class MongoCollectionMapper(Mapper):
         # No mappings exist or no mapping was found - we are going to create
         # default physical reference
         if not reference:
-            field_name = attribute.name
+
+            if hasattr(attribute, "measure"):
+                field_name = attribute.measure
+            else:
+                field_name = attribute.name
 
             if locale:
                 field_name += "_" + locale

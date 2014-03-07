@@ -124,7 +124,14 @@ class Mongo2Browser(AggregationBrowser):
                                                     page=page,
                                                     page_size=page_size)
         result.cells = iter(items)
-        result.summary = summary or {}
+        if summary:
+            result.summary = summary
+        else:
+            #manual build
+            result.summary = {}
+            for agg in aggregates:
+                result.summary[str(agg)] = sum([i.get(str(agg), 0) for i in items])
+
         # add calculated measures w/o drilldown or split if no drilldown or split
         if not (drilldown or split):
             calculators = calculators_for_aggregates(self.cube,
