@@ -5,6 +5,7 @@ import re
 import pytz
 from dateutil.relativedelta import relativedelta
 from dateutil.relativedelta import MO, TU, WE, TH, FR, SA, SU
+from dateutil.tz import *
 from datetime import datetime, timedelta
 from time import strftime, gmtime
 
@@ -95,11 +96,6 @@ def calendar_hierarchy_units(hierarchy):
     return units
 
 
-def local_timezone_name():
-    """Return system's local timezone"""
-    return strftime("%Z", gmtime())
-
-
 def add_time_units(time, unit, amount):
     """Subtract `amount` number of `unit`s from datetime object `time`."""
 
@@ -140,15 +136,15 @@ class Calendar(object):
             self.first_weekday = int(first_weekday)
 
         if timezone:
-            self.timezone = pytz.timezone(timezone)
+            self.timezone_name = timezone
+            self.timezone = gettz(timezone) or tzstr(timezone)
         else:
-            import tzlocal
-            self.timezone = tzlocal.get_localzone()
+            self.timezone_name = datetime.now(tzlocal()).tzname()
+            self.timezone = tzlocal()
 
     def now(self):
         """Returns current date in the calendar's timezone."""
-        current_moment = _UTC.localize(datetime.utcnow())
-        return current_moment.astimezone(self.timezone)
+        return datetime.now(self.timezone)
 
     def path(self, time, units):
         """Returns a path from `time` containing date/time `units`. `units`
@@ -211,7 +207,7 @@ class Calendar(object):
             time = time.replace(day=1, hour=0)
 
         elif unit == 'quarter':
-            month = (month_to_quarter(time.month) * 3) + 1
+            month = (month_to_quarter(time.month) - 1) * 3 + 1
             time = time.replace(month=month, day=1, hour=0)
 
         elif unit == 'year':
@@ -221,6 +217,28 @@ class Calendar(object):
             raise ValueError("Unrecognized unit: %s" % unit)
 
         return time
+
+    def since_period_start(self, period, unit, time=None):
+        """Returns distance between `time` and the nearest `period` start
+        relative to `time` in `unit` units. For example: distance between
+        today and start of this year."""
+
+        if not time:
+            time = self.now()
+
+        start = self.truncate_time(time, period)
+        diff = time - start
+
+        if unit == "day":
+            return diff.days
+        elif unit == "hour":
+            return diff.days * 24 + (diff.seconds / 3600)
+        elif unit == "minute":
+            return diff.days * 1440 + (diff.seconds / 60)
+        elif unit == "second":
+            return diff.days * 86400 + diff.seconds
+        else:
+            raise ValueError("Unrecognized period unit: %s" % unit)
 
     def named_relative_path(self, reference, units, date=None):
         """"""
