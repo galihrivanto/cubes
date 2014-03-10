@@ -78,7 +78,10 @@ class MongoDocumentField(object):
         return copy.deepcopy(self.group) if self.group else self.group
 
     def match_expression(self, value, op=None, for_project=False):
-        value = self.encode(value)
+        if self.value_type:
+            value = self.convert_value(value)
+        else:
+            value = self.encode(value)
         field_name = ("$%s" % self.field) if for_project else self.field
 
         if op is None or (op == '$eq' and not for_project):
